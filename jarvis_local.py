@@ -252,9 +252,6 @@ class JarvisLocalVoiceV2:
         self._running = True
         self.state_machine.transition_to(AgentState.IDLE)
 
-        # Initial startup greeting
-        self.speak(INITIAL_GREETING)
-
         print("\033[97m" + "-" * 65)
         print("  JARVIS V2 CONTROLS:")
         print("   • [TYPE]:  Type your question below and press [ENTER]")
@@ -266,6 +263,9 @@ class JarvisLocalVoiceV2:
         # Start background wake-word listener thread
         wake_thread = threading.Thread(target=self._background_wake_listener, daemon=True)
         wake_thread.start()
+
+        # Initial startup greeting in background
+        threading.Thread(target=lambda: self.speak(INITIAL_GREETING), daemon=True).start()
 
         while self._running:
             try:
