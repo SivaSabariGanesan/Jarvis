@@ -1,11 +1,19 @@
 import os
+import sys
 
 # Limit BLAS/OpenMP thread allocation to prevent Windows memory pool exhaustion
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["PYTHONIOENCODING"] = "utf-8"
 
-import sys
+# Ensure UTF-8 output encoding on Windows console
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 import time
 import queue
 import logging
@@ -107,7 +115,7 @@ class JarvisLocalVoiceV2:
                 self.state_machine.transition_to(AgentState.SPEAKING)
 
             print(f"\n\033[94m{settings.jarvis_name}:\033[0m {text}", flush=True)
-            print("\033[90m[🔊 Speaking...]\033[0m", flush=True)
+            print("\033[90m[Speaking...]\033[0m", flush=True)
             self.db.log_message(session_id=self.session_id, role="assistant", content=text)
             self.messages.append({"role": "assistant", "content": text})
 
@@ -125,7 +133,7 @@ class JarvisLocalVoiceV2:
             except Exception as e:
                 print(f"\033[91m[TTS Error]: {e}\033[0m", flush=True)
             finally:
-                print("\033[90m[✓ Speech finished]\033[0m\n", flush=True)
+                print("\033[90m[Speech finished]\033[0m\n", flush=True)
                 if suppress_wakeword:
                     self.wakeword_detector.reset()
                     self.wakeword_detector.set_suppressed(False)
@@ -164,7 +172,7 @@ class JarvisLocalVoiceV2:
 
     def record_command(self, silence_threshold=0.012, max_seconds=12, silence_duration=1.2) -> Optional[np.ndarray]:
         """Record user command after wake word until end-of-speech silence is detected."""
-        print("\033[93m🎙️  [LISTENING...] Speak your command into the mic now...\033[0m", flush=True)
+        print("\033[93m[LISTENING...] Speak your command into the mic now...\033[0m", flush=True)
 
         recorded_chunks = []
         block_size = 1024
@@ -198,7 +206,7 @@ class JarvisLocalVoiceV2:
         if audio_data is None or len(audio_data) < self.sample_rate * 0.4:
             return ""
 
-        print("\033[90m⚙️  [PROCESSING: Transcribing speech...]\033[0m", flush=True)
+        print("\033[90m[PROCESSING: Transcribing speech...]\033[0m", flush=True)
         segments, _ = self.stt_model.transcribe(audio_data, beam_size=5, vad_filter=True)
         return " ".join(seg.text for seg in segments).strip()
 

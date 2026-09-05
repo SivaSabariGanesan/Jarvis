@@ -21,7 +21,7 @@ class AgentState(str, enum.Enum):
 
 # Valid state transitions
 VALID_TRANSITIONS = {
-    AgentState.IDLE: {AgentState.LISTENING, AgentState.PROCESSING},
+    AgentState.IDLE: {AgentState.LISTENING, AgentState.PROCESSING, AgentState.SPEAKING},
     AgentState.LISTENING: {AgentState.PROCESSING, AgentState.IDLE},
     AgentState.PROCESSING: {AgentState.SPEAKING, AgentState.IDLE},
     AgentState.SPEAKING: {AgentState.IDLE, AgentState.LISTENING},
