@@ -110,15 +110,17 @@ class JarvisLocalVoiceV2:
 
         try:
             voice = self.tts.voice
-            audio_bytes = b"".join(
-                chunk.audio_int16_bytes for chunk in voice.synthesize(text) if hasattr(chunk, "audio_int16_bytes")
-            )
-            if audio_bytes:
-                audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
+            audio_chunks = [
+                chunk.audio_int16_array
+                for chunk in voice.synthesize(text)
+                if hasattr(chunk, "audio_int16_array") and chunk.audio_int16_array is not None
+            ]
+            if audio_chunks:
+                audio_np = np.concatenate(audio_chunks)
                 sd.play(audio_np, samplerate=self.tts.sample_rate)
                 sd.wait()
         except Exception as e:
-            logger.error(f"TTS audio playback error: {e}")
+            print(f"\033[91m[TTS Error]: {e}\033[0m", flush=True)
         finally:
             if suppress_wakeword:
                 self.state_machine.transition_to(AgentState.IDLE)
