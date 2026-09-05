@@ -1,10 +1,4 @@
 import os
-
-# Limit BLAS/OpenMP thread allocation to prevent Windows memory pool exhaustion
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-
 import io
 import wave
 import logging

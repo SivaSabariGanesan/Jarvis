@@ -1,10 +1,6 @@
 import os
 import sys
 
-# Limit BLAS/OpenMP thread allocation to prevent Windows memory pool exhaustion
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["PYTHONIOENCODING"] = "utf-8"
 
 # Ensure UTF-8 output encoding on Windows console
