@@ -90,6 +90,7 @@ class JarvisLocalVoiceV2:
         self.chunk_size = 1280  # 80ms chunks for openWakeWord
         self._running = False
         self._active_lock = threading.Lock()
+        self._tts_lock = threading.Lock()
 
         print("\033[92m" + "=" * 65)
         print(f"  [INFO] JARVIS V2 ONLINE. ALL SYSTEMS OPERATIONAL.")
@@ -100,34 +101,35 @@ class JarvisLocalVoiceV2:
         if not text or not text.strip():
             return
 
-        if suppress_wakeword:
-            self.wakeword_detector.set_suppressed(True)
-            self.state_machine.transition_to(AgentState.SPEAKING)
-
-        print(f"\n\033[94m{settings.jarvis_name}:\033[0m {text}", flush=True)
-        print("\033[90m[🔊 Speaking...]\033[0m", flush=True)
-        self.db.log_message(session_id=self.session_id, role="assistant", content=text)
-        self.messages.append({"role": "assistant", "content": text})
-
-        try:
-            voice = self.tts.voice
-            audio_chunks = [
-                chunk.audio_int16_array
-                for chunk in voice.synthesize(text)
-                if hasattr(chunk, "audio_int16_array") and chunk.audio_int16_array is not None
-            ]
-            if audio_chunks:
-                audio_np = np.concatenate(audio_chunks)
-                sd.play(audio_np, samplerate=self.tts.sample_rate)
-                sd.wait()
-        except Exception as e:
-            print(f"\033[91m[TTS Error]: {e}\033[0m", flush=True)
-        finally:
-            print("\033[90m[✓ Speech finished]\033[0m\n", flush=True)
+        with self._tts_lock:
             if suppress_wakeword:
-                self.state_machine.transition_to(AgentState.IDLE)
-                self.wakeword_detector.reset()
-                self.wakeword_detector.set_suppressed(False)
+                self.wakeword_detector.set_suppressed(True)
+                self.state_machine.transition_to(AgentState.SPEAKING)
+
+            print(f"\n\033[94m{settings.jarvis_name}:\033[0m {text}", flush=True)
+            print("\033[90m[🔊 Speaking...]\033[0m", flush=True)
+            self.db.log_message(session_id=self.session_id, role="assistant", content=text)
+            self.messages.append({"role": "assistant", "content": text})
+
+            try:
+                voice = self.tts.voice
+                audio_chunks = [
+                    chunk.audio_int16_array
+                    for chunk in voice.synthesize(text)
+                    if hasattr(chunk, "audio_int16_array") and chunk.audio_int16_array is not None
+                ]
+                if audio_chunks:
+                    audio_np = np.concatenate(audio_chunks)
+                    sd.play(audio_np, samplerate=self.tts.sample_rate)
+                    sd.wait()
+            except Exception as e:
+                print(f"\033[91m[TTS Error]: {e}\033[0m", flush=True)
+            finally:
+                print("\033[90m[✓ Speech finished]\033[0m\n", flush=True)
+                if suppress_wakeword:
+                    self.wakeword_detector.reset()
+                    self.wakeword_detector.set_suppressed(False)
+                    self.state_machine.transition_to(AgentState.IDLE)
 
     def ask_llm(self, user_text: str) -> str:
         """Query local Ollama with user command."""
@@ -276,8 +278,8 @@ class JarvisLocalVoiceV2:
         wake_thread = threading.Thread(target=self._background_wake_listener, daemon=True)
         wake_thread.start()
 
-        # Initial startup greeting in background
-        threading.Thread(target=lambda: self.speak(INITIAL_GREETING), daemon=True).start()
+        # Initial startup greeting
+        self.speak(INITIAL_GREETING)
 
         while self._running:
             try:

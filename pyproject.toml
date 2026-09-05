@@ -11,6 +11,7 @@ dependencies = [
     "livekit-plugins-openai>=1.8.0",
     "livekit-plugins-silero>=1.8.0",
     "numpy>=2.4.6",
+    "openwakeword>=0.6.0",
     "piper-tts>=1.8.0",
     "pydantic-settings>=2.15.0",
     "python-dotenv>=1.2.3",
