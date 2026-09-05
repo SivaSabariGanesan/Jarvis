@@ -1,10 +1,10 @@
-"""
-JARVIS V2 Standalone Local Voice Assistant.
-100% Local Execution with continuous "Jarvis" Wake-Word Detection AND Full Interactive Keyboard Typing.
-Pipeline: Microphone / Terminal -> OpenWakeWord / Text -> Faster-Whisper (CPU) -> Ollama (GPU) -> Piper TTS (CPU) -> Speakers.
-"""
-
 import os
+
+# Limit BLAS/OpenMP thread allocation to prevent Windows memory pool exhaustion
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import sys
 import time
 import queue

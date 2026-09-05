@@ -1,9 +1,10 @@
-"""
-Local Text-to-Speech (TTS) implementation using Piper.
-Synthesizes speech on the local machine and integrates with LiveKit Agents.
-"""
-
 import os
+
+# Limit BLAS/OpenMP thread allocation to prevent Windows memory pool exhaustion
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import io
 import wave
 import logging
@@ -12,6 +13,7 @@ import urllib.request
 from pathlib import Path
 from typing import Optional, Iterable
 
+import onnxruntime as ort
 from piper.voice import PiperVoice
 import livekit.rtc as rtc
 from livekit.agents import tts
@@ -138,6 +140,18 @@ class LocalPiperTTS(tts.TTS):
             onnx_path, json_path = self._ensure_voice_files()
             logger.info(f"Loading Piper voice from {onnx_path}...")
             self.voice = PiperVoice.load(str(onnx_path), config_path=str(json_path))
+
+            # Configure ONNX session without memory arena to prevent BFCArena pool exhaustion
+            opts = ort.SessionOptions()
+            opts.enable_cpu_mem_arena = False
+            opts.intra_op_num_threads = 2
+            opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            self.voice.session = ort.InferenceSession(
+                str(onnx_path),
+                sess_options=opts,
+                providers=["CPUExecutionProvider"],
+            )
+
             logger.info(
                 f"Piper voice '{self.voice_name}' ready (sample_rate={self.voice.config.sample_rate}Hz)."
             )
