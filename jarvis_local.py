@@ -86,19 +86,6 @@ class JarvisLocalVoiceV2:
         self.messages = [{"role": "system", "content": JARVIS_SYSTEM_PROMPT}]
         print(f"\033[92m[OK] Ollama ready at {self.ollama_host}.\033[0m", flush=True)
 
-        # Pre-warm Ollama model in background so first user request is instant (<0.4s)
-        def _prewarm_llm():
-            try:
-                httpx.post(
-                    f"{self.ollama_host}/api/chat",
-                    json={"model": settings.ollama_model, "messages": [{"role": "user", "content": "hi"}], "stream": False},
-                    timeout=60.0,
-                )
-            except Exception:
-                pass
-
-        threading.Thread(target=_prewarm_llm, daemon=True).start()
-
         self.sample_rate = 16000
         self.chunk_size = 1280  # 80ms chunks for openWakeWord
         self._running = False
@@ -143,19 +130,27 @@ class JarvisLocalVoiceV2:
         self.messages.append({"role": "user", "content": user_text})
         self.db.log_message(session_id=self.session_id, role="user", content=user_text)
 
+        # Keep system prompt + last 12 messages for fast attention
+        history = [self.messages[0]] + self.messages[-12:] if len(self.messages) > 13 else self.messages
+
         payload = {
             "model": settings.ollama_model,
-            "messages": self.messages,
+            "messages": history,
             "stream": False,
-            "options": {"temperature": 0.7},
+            "options": {
+                "temperature": 0.7,
+                "num_predict": 128,
+            },
         }
 
         try:
-            with httpx.Client(timeout=60.0) as client:
+            with httpx.Client(timeout=30.0) as client:
                 res = client.post(f"{self.ollama_host}/api/chat", json=payload)
                 if res.status_code == 200:
                     data = res.json()
-                    return data.get("message", {}).get("content", "").strip()
+                    reply = data.get("message", {}).get("content", "").strip()
+                    print("\033[90m[INFO] Response received.\033[0m", flush=True)
+                    return reply
                 else:
                     return f"Error connecting to Ollama: HTTP {res.status_code}"
         except Exception as e:
