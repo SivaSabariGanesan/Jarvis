@@ -104,7 +104,8 @@ class JarvisLocalVoiceV2:
             self.wakeword_detector.set_suppressed(True)
             self.state_machine.transition_to(AgentState.SPEAKING)
 
-        print(f"\n\033[94m{settings.jarvis_name}:\033[0m {text}\n", flush=True)
+        print(f"\n\033[94m{settings.jarvis_name}:\033[0m {text}", flush=True)
+        print("\033[90m[🔊 Speaking...]\033[0m", flush=True)
         self.db.log_message(session_id=self.session_id, role="assistant", content=text)
         self.messages.append({"role": "assistant", "content": text})
 
@@ -122,6 +123,7 @@ class JarvisLocalVoiceV2:
         except Exception as e:
             print(f"\033[91m[TTS Error]: {e}\033[0m", flush=True)
         finally:
+            print("\033[90m[✓ Speech finished]\033[0m\n", flush=True)
             if suppress_wakeword:
                 self.state_machine.transition_to(AgentState.IDLE)
                 self.wakeword_detector.reset()
