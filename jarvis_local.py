@@ -14,7 +14,8 @@ import time
 import queue
 import logging
 import threading
-from typing import Optional, List, Dict
+import asyncio
+from typing import Optional, List, Dict, Any
 import numpy as np
 import sounddevice as sd
 import httpx
@@ -28,6 +29,7 @@ from agent.prompt import JARVIS_SYSTEM_PROMPT, INITIAL_GREETING
 from agent.memory.database import JarvisDatabase
 from agent.voice.tts import LocalPiperTTS
 from agent.wakeword import AgentState, StateMachine, OpenWakeWordDetector
+from agent.tools import tool_router, tool_registry
 from faster_whisper import WhisperModel
 
 logging.basicConfig(
@@ -72,12 +74,13 @@ class JarvisLocalVoiceV2:
                 settings.whisper_model_size,
                 device=settings.whisper_device,
                 compute_type=settings.whisper_compute_type,
-                cpu_threads=getattr(settings, "whisper_cpu_threads", 4),
+                cpu_threads=getattr(settings, "whisper_cpu_threads", 2),
             )
             print(f"\033[92m[OK] Faster-Whisper loaded on {settings.whisper_device} ({settings.whisper_compute_type}).\033[0m", flush=True)
         except Exception as e:
             print(f"\033[93m[!] CPU fallback: {e}\033[0m", flush=True)
-            self.stt_model = WhisperModel(settings.whisper_model_size, device="cpu", compute_type="int8", cpu_threads=4)
+            self.stt_model = WhisperModel(settings.whisper_model_size, device="cpu", compute_type="default", cpu_threads=1)
+            print(f"\033[92m[OK] Faster-Whisper fallback loaded on cpu (default, 1 thread).\033[0m", flush=True)
 
         # 3. Piper TTS
         print(f"[3/4] Loading Piper TTS ({settings.piper_voice})...", flush=True)
@@ -135,34 +138,50 @@ class JarvisLocalVoiceV2:
                     self.wakeword_detector.set_suppressed(False)
                     self.state_machine.transition_to(AgentState.IDLE)
 
-    def ask_llm(self, user_text: str) -> str:
-        """Query local Ollama with user command."""
-        self.messages.append({"role": "user", "content": user_text})
-        self.db.log_message(session_id=self.session_id, role="user", content=user_text)
-
-        # Keep system prompt + last 12 messages for fast attention
-        history = [self.messages[0]] + self.messages[-12:] if len(self.messages) > 13 else self.messages
-
+    async def _call_ollama_api(
+        self,
+        user_text: str,
+        history: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Low-level async client for Ollama chat with tools."""
         payload = {
             "model": settings.ollama_model,
-            "messages": history,
+            "messages": history + [{"role": "user", "content": user_text}],
             "stream": False,
             "options": {
                 "temperature": 0.7,
                 "num_predict": 128,
             },
         }
+        if tools:
+            payload["tools"] = tools
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.post(f"{self.ollama_host}/api/chat", json=payload)
+            if res.status_code == 200:
+                return res.json()
+            else:
+                return {"message": {"role": "assistant", "content": f"Error connecting to Ollama: HTTP {res.status_code}"}}
+
+    def ask_llm(self, user_text: str) -> str:
+        """Query local Ollama with user command through secure tool router."""
+        self.messages.append({"role": "user", "content": user_text})
+        self.db.log_message(session_id=self.session_id, role="user", content=user_text)
+
+        # Keep system prompt + last 12 messages for fast attention
+        history = [self.messages[0]] + self.messages[-12:] if len(self.messages) > 13 else self.messages
 
         try:
-            with httpx.Client(timeout=30.0) as client:
-                res = client.post(f"{self.ollama_host}/api/chat", json=payload)
-                if res.status_code == 200:
-                    data = res.json()
-                    reply = data.get("message", {}).get("content", "").strip()
-                    print("\033[90m[INFO] Response received.\033[0m", flush=True)
-                    return reply
-                else:
-                    return f"Error connecting to Ollama: HTTP {res.status_code}"
+            reply = asyncio.run(
+                tool_router.process_user_request(
+                    user_text=user_text,
+                    ollama_client_func=self._call_ollama_api,
+                    conversation_history=history,
+                )
+            )
+            print("\033[90m[INFO] Response received.\033[0m", flush=True)
+            return reply
         except Exception as e:
             return f"I apologize, sir. An error occurred with the local reasoning model: {e}"
 

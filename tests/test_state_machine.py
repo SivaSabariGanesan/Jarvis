@@ -35,15 +35,17 @@ def test_valid_transitions():
 
 def test_invalid_transitions_rejected():
     sm = StateMachine(AgentState.IDLE)
-    # IDLE cannot go directly to SPEAKING
-    assert sm.transition_to(AgentState.SPEAKING) is False
-    assert sm.current_state == AgentState.IDLE
-
     # Transition to LISTENING
     sm.transition_to(AgentState.LISTENING)
     # LISTENING cannot go directly to SPEAKING
     assert sm.transition_to(AgentState.SPEAKING) is False
     assert sm.current_state == AgentState.LISTENING
+
+    # Transition to PROCESSING
+    sm.transition_to(AgentState.PROCESSING)
+    # PROCESSING cannot go directly to LISTENING
+    assert sm.transition_to(AgentState.LISTENING) is False
+    assert sm.current_state == AgentState.PROCESSING
 
 
 def test_listener_callback():

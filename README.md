@@ -1,26 +1,51 @@
-# JARVIS — Local Personal AI Voice Agent
+# JARVIS V3 — Local Personal Voice Agent & Secure Computer Control
 
-A real-time, local personal AI voice agent built with **LiveKit Agents**, **Ollama** (Docker with NVIDIA GPU acceleration), **faster-whisper** (Local STT), **Piper TTS** (Local high-fidelity speech synthesis), and **SQLite** memory persistence.
+A real-time, local personal AI voice agent and secure computer control assistant built with **LiveKit Agents**, **Ollama** (Docker with NVIDIA GPU acceleration), **openWakeWord** (Local "Jarvis" detection), **faster-whisper** (Local STT), **Piper TTS** (Local high-fidelity speech synthesis), **SQLite** memory persistence, and a **Deny-by-Default Security Tool Framework**.
 
 ---
 
-## Architecture Overview
+## Architecture Overview (V3)
 
 ```text
-[ Microphone ]
-       │
-       ▼
- [ LiveKit Room ]
-       │
-       ▼ (Audio Stream)
-[ Silero VAD + Local Whisper STT ] ──► (Transcribed Text)
-                                               │
-                                               ▼
-                                   [ Local Ollama LLM ]
-                                   (llama3.2:3b / qwen2.5:3b)
-                                               │
-                                               ▼ (Response Tokens)
- [ Speaker ] ◄── [ LiveKit Audio ] ◄── [ Local Piper TTS ]
+                  [ User Voice / Text Input ]
+                               │
+                      ┌────────▼────────┐
+                      │   Wake Word     │ ("Jarvis")
+                      └────────┬────────┘
+                               │
+                      ┌────────▼────────┐
+                      │ Faster-Whisper  │ (CPU STT)
+                      └────────┬────────┘
+                               │
+                      ┌────────▼────────┐
+                      │ Intent / LLM    │ (Ollama llama3.2:3b on GPU)
+                      └────────┬────────┘
+                               │
+            ┌──────────────────▼──────────────────┐
+            │       SECURITY VALIDATION LAYER     │
+            │  • Deny-by-Default Execution        │
+            │  • Path Sandboxing (JARVIS_WORKSPACE)│
+            │  • Application & URL Allowlisting   │
+            │  • Risk Tiering (LOW/MEDIUM/HIGH)   │
+            │  • User Confirmation for HIGH Risk  │
+            │  • Emergency Stop ("JARVIS STOP")   │
+            │  • Structured Audit Logging         │
+            └──────────────────┬──────────────────┘
+                               │
+        ┌──────────────────────┼──────────────────────┐
+        ▼                      ▼                      ▼
+  [ Applications ]     [ System Info ]         [ Filesystem ]
+  • open / close       • CPU / RAM / Disk      • create / read
+  • status checks      • NVIDIA GPU status     • rename / move / copy
+  • allowlist-only     • running apps          • delete (HIGH_RISK)
+        │                      │                      │
+        └──────────────────────┼──────────────────────┘
+                               │
+                      ┌────────▼────────┐
+                      │    Piper TTS    │ (22050Hz)
+                      └────────┬────────┘
+                               │
+                      [ Local Speakers ]
 ```
 
 ---

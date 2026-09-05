@@ -57,23 +57,23 @@ class LocalWhisperSTT(stt.STT):
                 device=device,
                 device_index=0 if device == "cuda" else 0,
                 compute_type=compute_type,
-                cpu_threads=4,
+                cpu_threads=getattr(settings, "whisper_cpu_threads", 2),
             )
             logger.info(f"faster-whisper model '{self.model_size}' successfully loaded on {device}.")
         except Exception as e:
-            if device != "cpu":
-                logger.warning(
-                    f"Failed to load faster-whisper on {device} ({e}). Falling back to CPU int8..."
-                )
+            logger.warning(
+                f"Failed to load faster-whisper on {device} ({e}). Falling back to CPU default..."
+            )
+            try:
                 self.whisper_model = WhisperModel(
                     self.model_size,
                     device="cpu",
-                    compute_type="int8",
-                    cpu_threads=4,
+                    compute_type="default",
+                    cpu_threads=1,
                 )
                 logger.info(f"faster-whisper model '{self.model_size}' loaded on CPU fallback.")
-            else:
-                logger.error(f"Failed to load faster-whisper model: {e}")
+            except Exception as cpu_err:
+                logger.error(f"Failed to load faster-whisper model on fallback: {cpu_err}")
                 raise
 
     async def _recognize_impl(

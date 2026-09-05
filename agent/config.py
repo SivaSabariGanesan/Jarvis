@@ -31,8 +31,8 @@ class JarvisSettings(BaseSettings):
     # STT (Speech-to-Text) - Run on CPU to reserve full GPU VRAM for Ollama LLM
     whisper_model_size: str = Field(default="base.en", alias="WHISPER_MODEL_SIZE")
     whisper_device: str = Field(default="cpu", alias="WHISPER_DEVICE")
-    whisper_compute_type: str = Field(default="int8", alias="WHISPER_COMPUTE_TYPE")
-    whisper_cpu_threads: int = Field(default=4, alias="WHISPER_CPU_THREADS")
+    whisper_compute_type: str = Field(default="default", alias="WHISPER_COMPUTE_TYPE")
+    whisper_cpu_threads: int = Field(default=1, alias="WHISPER_CPU_THREADS")
 
     # TTS (Text-to-Speech)
     piper_voice: str = Field(default="en_US-lessac-medium", alias="PIPER_VOICE")
@@ -47,10 +47,22 @@ class JarvisSettings(BaseSettings):
     # Memory / Storage
     sqlite_db_path: str = Field(default="data/jarvis_memory.db", alias="SQLITE_DB_PATH")
 
+    # V3 Computer Control & Security
+    jarvis_workspace: str = Field(default="D:\\Jarvis", alias="JARVIS_WORKSPACE")
+    allowed_directories: list[str] = Field(default_factory=list, alias="JARVIS_ALLOWED_DIRECTORIES")
+    tool_timeout_seconds: float = Field(default=15.0, alias="TOOL_TIMEOUT_SECONDS")
+    computer_control_enabled: bool = Field(default=True, alias="COMPUTER_CONTROL_ENABLED")
+
     @property
     def database_file(self) -> Path:
         path = Path(self.sqlite_db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def workspace_path(self) -> Path:
+        path = Path(self.jarvis_workspace).resolve()
+        path.mkdir(parents=True, exist_ok=True)
         return path
 
 
