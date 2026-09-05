@@ -17,6 +17,15 @@ from agent.tools.keyboard import type_text, press_key, hotkey
 from agent.tools.window_info import get_active_window, get_open_windows
 from agent.tools.vision import analyze_screen, click_element
 from agent.tools.action_queue import ActionQueue, wait_for_window
+from agent.tools.browser import (
+    open_browser,
+    open_url,
+    browser_search,
+    browser_go_back,
+    browser_go_forward,
+    browser_refresh,
+    get_browser_state,
+)
 
 __all__ = [
     "RiskLevel",
@@ -46,4 +55,11 @@ __all__ = [
     "click_element",
     "ActionQueue",
     "wait_for_window",
+    "open_browser",
+    "open_url",
+    "browser_search",
+    "browser_go_back",
+    "browser_go_forward",
+    "browser_refresh",
+    "get_browser_state",
 ]

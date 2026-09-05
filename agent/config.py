@@ -60,6 +60,16 @@ class JarvisSettings(BaseSettings):
     screenshot_save_enabled: bool = Field(default=True, alias="SCREENSHOT_SAVE_ENABLED")
     computer_action_timeout_seconds: float = Field(default=15.0, alias="COMPUTER_ACTION_TIMEOUT_SECONDS")
 
+    # V5 Secure Browser Agent
+    browser_action_timeout_seconds: float = Field(default=15.0, alias="BROWSER_ACTION_TIMEOUT_SECONDS")
+    browser_domain_policy: str = Field(default="open", alias="BROWSER_DOMAIN_POLICY")
+    browser_allowed_domains: list[str] = Field(
+        default_factory=lambda: ["google.com", "github.com", "docs.python.org", "python.org", "wikipedia.org"],
+        alias="BROWSER_ALLOWED_DOMAINS",
+    )
+    max_browser_actions_per_task: int = Field(default=20, alias="MAX_BROWSER_ACTIONS_PER_TASK")
+    max_browser_retries: int = Field(default=2, alias="MAX_BROWSER_RETRIES")
+
     @property
     def database_file(self) -> Path:
         path = Path(self.sqlite_db_path)

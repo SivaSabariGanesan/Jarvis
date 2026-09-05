@@ -42,6 +42,15 @@ from agent.tools.mouse import move_mouse, click, double_click, right_click, scro
 from agent.tools.keyboard import type_text, press_key, hotkey
 from agent.tools.window_info import get_active_window, get_open_windows
 from agent.tools.vision import analyze_screen, click_element
+from agent.tools.browser import (
+    open_browser,
+    open_url,
+    browser_search,
+    browser_go_back,
+    browser_go_forward,
+    browser_refresh,
+    get_browser_state,
+)
 
 logger = logging.getLogger("jarvis.tools.registry")
 
@@ -703,6 +712,90 @@ class ToolRegistry:
             category="vision",
         )(click_element)
 
+        # 11. V5 Secure Browser Controls
+        self.register(
+            name="open_browser",
+            description="Launch or focus an authorized web browser (chrome, edge).",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "browser_name": {
+                        "type": "string",
+                        "description": "Browser name (e.g. 'chrome', 'edge'). Default is 'chrome'.",
+                    }
+                },
+            },
+            risk_level=RiskLevel.LOW,
+            category="browser",
+        )(open_browser)
+
+        self.register(
+            name="open_url",
+            description="Open a validated http or https web address in the browser.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Web URL to open (e.g. 'https://docs.python.org').",
+                    }
+                },
+                "required": ["url"],
+            },
+            risk_level=RiskLevel.LOW,
+            category="browser",
+        )(open_url)
+
+        self.register(
+            name="browser_search",
+            description="Search the web for a given query safely in the browser.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query text.",
+                    }
+                },
+                "required": ["query"],
+            },
+            risk_level=RiskLevel.LOW,
+            category="browser",
+        )(browser_search)
+
+        self.register(
+            name="browser_go_back",
+            description="Navigate back to the previous page in the browser history.",
+            parameters_schema={"type": "object", "properties": {}},
+            risk_level=RiskLevel.LOW,
+            category="browser",
+        )(browser_go_back)
+
+        self.register(
+            name="browser_go_forward",
+            description="Navigate forward to the next page in the browser history.",
+            parameters_schema={"type": "object", "properties": {}},
+            risk_level=RiskLevel.LOW,
+            category="browser",
+        )(browser_go_forward)
+
+        self.register(
+            name="browser_refresh",
+            description="Refresh or reload the current active browser page.",
+            parameters_schema={"type": "object", "properties": {}},
+            risk_level=RiskLevel.LOW,
+            category="browser",
+        )(browser_refresh)
+
+        self.register(
+            name="get_browser_state",
+            description="Check active browser window title and status without reading private data.",
+            parameters_schema={"type": "object", "properties": {}},
+            risk_level=RiskLevel.LOW,
+            category="browser",
+        )(get_browser_state)
+
 
 # Global tool registry singleton
 tool_registry = ToolRegistry()
+

@@ -34,7 +34,7 @@ COMPUTER_INTENT_KEYWORDS = {
     "browse", "browser", "website", "url", "explorer", "folder", "file", "app", "application",
     "taskmgr", "taskmanager", "paint", "notepad", "word", "excel", "calculator", "calc", "chrome", "vscode",
     "click", "mouse", "type", "press", "key", "hotkey", "window", "windows", "look", "active", "scroll",
-    "element", "search", "analyze"
+    "element", "search", "analyze", "web", "page", "back", "forward", "refresh", "reload", "takeover", "continue"
 }
 
 
@@ -52,11 +52,12 @@ class ToolRouter:
     def __init__(self):
         self.pending_confirmation: Optional[Tuple[str, Dict[str, Any]]] = None
 
-    def handle_emergency_stop_check(self, text: str) -> Optional[str]:
-        """Check for emergency stop / resume voice or text commands."""
+    def handle_takeover_and_emergency_check(self, text: str) -> Optional[str]:
+        """Check for emergency stop / resume or Takeover mode voice/text commands."""
+        from agent.ai.browser_planner import browser_planner
         cleaned = text.strip().lower()
 
-        # Stop patterns
+        # Emergency Stop patterns
         if cleaned in ("jarvis stop", "emergency stop", "stop computer control", "halt", "pause"):
             security_validator.pause_control(reason="User voice/text emergency stop")
             self.pending_confirmation = None
@@ -67,7 +68,19 @@ class ToolRouter:
             security_validator.resume_control()
             return "Computer control has been resumed, sir. Ready for commands."
 
+        # Takeover mode patterns
+        if cleaned in ("jarvis take over", "take over", "takeover", "i take over", "i will take over"):
+            return browser_planner.pause_for_takeover()
+
+        if cleaned in ("jarvis continue", "continue", "resume automation", "continue automation"):
+            # Note: handle in async process_user_request
+            return None
+
         return None
+
+    def handle_emergency_stop_check(self, text: str) -> Optional[str]:
+        """Backward-compatible emergency stop handler."""
+        return self.handle_takeover_and_emergency_check(text)
 
     def handle_pending_confirmation(self, text: str) -> Optional[Tuple[bool, str]]:
         """
@@ -214,6 +227,24 @@ class ToolRouter:
         if m_hotkey:
             return "hotkey", {"keys": m_hotkey.group(2)}
 
+        # V5 Browser Controls
+        m_url = re.match(r"^(?:open|go to|navigate to)\s+(https?://\S+|www\.\S+)$", t)
+        if m_url:
+            return "open_url", {"url": m_url.group(1)}
+
+        m_search = re.match(r"^search\s+(?:for\s+)?(.+)$", t)
+        if m_search:
+            return "browser_search", {"query": m_search.group(1)}
+
+        if t in ("go back", "browser go back", "browser back"):
+            return "browser_go_back", {}
+        if t in ("go forward", "browser go forward", "browser forward"):
+            return "browser_go_forward", {}
+        if t in ("refresh", "refresh page", "refresh the page", "reload page", "reload"):
+            return "browser_refresh", {}
+        if t in ("browser status", "browser state", "what is open in my browser", "what is on browser"):
+            return "get_browser_state", {}
+
         return None
 
     async def execute_intent(
@@ -244,17 +275,24 @@ class ToolRouter:
     ) -> str:
         """
         Main routing pipeline:
-        1. Check emergency stop commands.
+        1. Check emergency stop & takeover commands.
         2. Check pending confirmation responses.
-        3. Check deterministic fast-path intents.
-        4. Query Ollama with tool schemas.
-        5. If Ollama returns tool calls -> Execute securely through tool registry.
-        6. If Ollama returns direct conversation -> Return spoken reply.
+        3. Check browser planner multi-step goals.
+        4. Check deterministic fast-path intents.
+        5. Query Ollama with tool schemas.
+        6. If Ollama returns tool calls -> Execute securely through tool registry.
+        7. If Ollama returns direct conversation -> Return spoken reply.
         """
-        # 1. Emergency Stop Check
-        stop_reply = self.handle_emergency_stop_check(user_text)
+        from agent.ai.browser_planner import browser_planner
+
+        # 1. Emergency Stop & Takeover Check
+        stop_reply = self.handle_takeover_and_emergency_check(user_text)
         if stop_reply:
             return stop_reply
+
+        cleaned_lower = user_text.strip().lower()
+        if cleaned_lower in ("jarvis continue", "continue", "resume automation", "continue automation"):
+            return await browser_planner.resume_after_takeover()
 
         # 2. Pending Confirmation Check
         conf_res = self.handle_pending_confirmation(user_text)
@@ -262,13 +300,18 @@ class ToolRouter:
             _, reply = conf_res
             return reply
 
-        # 3. Deterministic Fast-Path
+        # 3. Browser Multi-Step Planner Check
+        plan = browser_planner.create_deterministic_plan(user_text)
+        if plan and len(plan.get("steps", [])) > 1:
+            return await browser_planner.execute_plan(plan)
+
+        # 4. Deterministic Fast-Path
         fast_intent = self.match_deterministic_intent(user_text)
         if fast_intent:
             tool_name, tool_args = fast_intent
             return await self.execute_intent(tool_name, tool_args)
 
-        # 4. Ollama LLM Reasoning (Attach tool schemas only if user expressed computer action intent)
+        # 5. Ollama LLM Reasoning (Attach tool schemas only if user expressed computer action intent)
         try:
             tool_schemas = (
                 tool_registry.get_ollama_tools_schema()

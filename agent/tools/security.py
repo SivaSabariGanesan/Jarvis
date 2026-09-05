@@ -122,6 +122,52 @@ PROTECTED_UI_ELEMENTS: Set[str] = {
     "wipe",
 }
 
+# V5 Browser Security Allowlists & Protections
+DANGEROUS_WEB_ACTIONS: Set[str] = {
+    "purchase",
+    "checkout",
+    "pay",
+    "send money",
+    "transfer money",
+    "delete account",
+    "delete data",
+    "submit legal form",
+    "send email",
+    "publish content",
+    "change password",
+    "change security settings",
+    "install software",
+    "download executable",
+}
+
+LOGIN_KEYWORDS: Set[str] = {
+    "sign in",
+    "log in",
+    "login",
+    "password",
+    "enter password",
+    "username",
+    "authenticator",
+    "otp",
+    "2fa",
+    "two-factor",
+    "credentials",
+    "passcode",
+}
+
+DISALLOWED_URL_SCHEMES: Set[str] = {
+    "file",
+    "javascript",
+    "data",
+    "vbscript",
+    "shell",
+    "about",
+    "chrome",
+    "edge",
+    "ms-appx",
+}
+
+
 
 
 @dataclass
@@ -406,7 +452,103 @@ class ToolSecurityValidator:
         clean = label.strip().lower()
         return any(term in clean for term in PROTECTED_UI_ELEMENTS)
 
+    def validate_browser_url(self, url_str: str) -> str:
+        """
+        Strictly validate browser URLs.
+        Allows only http:// and https:// schemes.
+        Rejects file://, javascript:, data:, vbscript:, shell:, about:, chrome://, edge://, etc.
+        Enforces domain policy if configured.
+        """
+        if not url_str or not str(url_str).strip():
+            raise SecurityViolation("URL parameter cannot be empty.")
+
+        url_clean = str(url_str).strip()
+        parsed = urllib.parse.urlparse(url_clean)
+
+        # Check explicit rejected schemes
+        if parsed.scheme:
+            scheme_lower = parsed.scheme.lower()
+            if scheme_lower in DISALLOWED_URL_SCHEMES or scheme_lower not in ("http", "https"):
+                raise SecurityViolation(
+                    f"Disallowed URL scheme '{parsed.scheme}'. Only HTTP and HTTPS are permitted."
+                )
+        else:
+            # Check for colon schemes like 'javascript:alert(1)' or 'chrome://settings'
+            if ":" in url_clean:
+                scheme_candidate = url_clean.split(":", 1)[0].lower()
+                if scheme_candidate in DISALLOWED_URL_SCHEMES or scheme_candidate not in ("http", "https"):
+                    raise SecurityViolation(
+                        f"Disallowed URL scheme '{scheme_candidate}'. Only HTTP and HTTPS are permitted."
+                    )
+            url_clean = f"https://{url_clean}"
+            parsed = urllib.parse.urlparse(url_clean)
+
+        if not parsed.netloc:
+            raise SecurityViolation(f"Invalid URL target: '{url_str}'")
+
+        # Check domain policy
+        domain = parsed.netloc.split(":")[0].lower()
+        if not self.check_domain_policy(domain):
+            raise SecurityViolation(
+                f"Domain '{domain}' is not authorized under the current browser domain policy ({settings.browser_domain_policy})."
+            )
+
+        return url_clean
+
+    def check_domain_policy(self, domain: str) -> bool:
+        """
+        Verify domain against configured browser domain policy (allowlist, ask, open).
+        """
+        policy = getattr(settings, "browser_domain_policy", "open").lower()
+        if policy == "open":
+            return True
+
+        allowed = getattr(settings, "browser_allowed_domains", [])
+        clean_domain = domain.lower().strip()
+
+        # Check if domain or parent domain is in allowlist
+        for allowed_domain in allowed:
+            a = allowed_domain.lower().strip()
+            if clean_domain == a or clean_domain.endswith("." + a):
+                return True
+
+        if policy == "allowlist":
+            return False
+
+        return True
+
+    def is_login_or_credential_prompt(self, text_or_elements: Any) -> bool:
+        """
+        Check if visible screen text or UI elements indicate a login or authentication form.
+        """
+        if isinstance(text_or_elements, str):
+            text_lower = text_or_elements.lower()
+            return any(k in text_lower for k in LOGIN_KEYWORDS)
+
+        if isinstance(text_or_elements, list):
+            for el in text_or_elements:
+                if isinstance(el, dict):
+                    label = str(el.get("label", "")).lower()
+                    el_type = str(el.get("type", "")).lower()
+                    if any(k in label for k in LOGIN_KEYWORDS) or "password" in el_type:
+                        return True
+                elif isinstance(el, str):
+                    if any(k in el.lower() for k in LOGIN_KEYWORDS):
+                        return True
+
+        return False
+
+    def is_dangerous_web_action(self, action_name: str) -> bool:
+        """
+        Check if a web action is potentially dangerous or financial/destructive.
+        """
+        if not action_name:
+            return False
+        clean = action_name.strip().lower()
+        return any(term in clean for term in DANGEROUS_WEB_ACTIONS)
+
 
 # Global security validator instance
 security_validator = ToolSecurityValidator()
+
 
