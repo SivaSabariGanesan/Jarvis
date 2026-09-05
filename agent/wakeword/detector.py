@@ -73,7 +73,7 @@ class OpenWakeWordDetector(BaseWakeWordDetector):
         self._last_detection_time = 0.0
         self._is_running = False
         self._suppressed = False
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         # Chunk size expected by openWakeWord (1280 samples = 80ms at 16kHz)
         self.chunk_size = 1280
