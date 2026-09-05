@@ -53,6 +53,13 @@ class JarvisSettings(BaseSettings):
     tool_timeout_seconds: float = Field(default=15.0, alias="TOOL_TIMEOUT_SECONDS")
     computer_control_enabled: bool = Field(default=True, alias="COMPUTER_CONTROL_ENABLED")
 
+    # V4 Vision & Input Controls
+    vision_model: str = Field(default="moondream", alias="VISION_MODEL")
+    vision_min_confidence: float = Field(default=0.80, alias="VISION_MIN_CONFIDENCE")
+    screenshot_retention_count: int = Field(default=20, alias="SCREENSHOT_RETENTION_COUNT")
+    screenshot_save_enabled: bool = Field(default=True, alias="SCREENSHOT_SAVE_ENABLED")
+    computer_action_timeout_seconds: float = Field(default=15.0, alias="COMPUTER_ACTION_TIMEOUT_SECONDS")
+
     @property
     def database_file(self) -> Path:
         path = Path(self.sqlite_db_path)

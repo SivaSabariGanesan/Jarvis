@@ -38,6 +38,10 @@ from agent.tools.filesystem import (
 )
 from agent.tools.media import media_play_pause, volume_up, volume_down, volume_mute
 from agent.tools.screenshot import take_screenshot
+from agent.tools.mouse import move_mouse, click, double_click, right_click, scroll
+from agent.tools.keyboard import type_text, press_key, hotkey
+from agent.tools.window_info import get_active_window, get_open_windows
+from agent.tools.vision import analyze_screen, click_element
 
 logger = logging.getLogger("jarvis.tools.registry")
 
@@ -520,6 +524,184 @@ class ToolRegistry:
             risk_level=RiskLevel.LOW,
             category="screenshot",
         )(take_screenshot)
+
+        # 7. Mouse Controls
+        self.register(
+            name="move_mouse",
+            description="Move the mouse cursor to specific (x, y) screen coordinates.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "Target X pixel coordinate."},
+                    "y": {"type": "integer", "description": "Target Y pixel coordinate."},
+                },
+                "required": ["x", "y"],
+            },
+            risk_level=RiskLevel.LOW,
+            category="mouse",
+        )(move_mouse)
+
+        self.register(
+            name="click",
+            description="Click the primary mouse button (optionally at specified x, y coordinates).",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "Optional target X pixel coordinate."},
+                    "y": {"type": "integer", "description": "Optional target Y pixel coordinate."},
+                },
+            },
+            risk_level=RiskLevel.LOW,
+            category="mouse",
+        )(click)
+
+        self.register(
+            name="double_click",
+            description="Double click the primary mouse button (optionally at specified x, y coordinates).",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "Optional target X pixel coordinate."},
+                    "y": {"type": "integer", "description": "Optional target Y pixel coordinate."},
+                },
+            },
+            risk_level=RiskLevel.LOW,
+            category="mouse",
+        )(double_click)
+
+        self.register(
+            name="right_click",
+            description="Right click the mouse button (optionally at specified x, y coordinates).",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "Optional target X pixel coordinate."},
+                    "y": {"type": "integer", "description": "Optional target Y pixel coordinate."},
+                },
+            },
+            risk_level=RiskLevel.LOW,
+            category="mouse",
+        )(right_click)
+
+        self.register(
+            name="scroll",
+            description="Scroll the mouse wheel vertically. Positive for up, negative for down.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "amount": {
+                        "type": "integer",
+                        "description": "Number of scroll notches (e.g. 5 for up, -5 for down).",
+                    }
+                },
+                "required": ["amount"],
+            },
+            risk_level=RiskLevel.LOW,
+            category="mouse",
+        )(scroll)
+
+        # 8. Keyboard Controls
+        self.register(
+            name="type_text",
+            description="Type text string into the currently focused window.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Text content to type into focused input.",
+                    }
+                },
+                "required": ["text"],
+            },
+            risk_level=RiskLevel.LOW,
+            category="keyboard",
+        )(type_text)
+
+        self.register(
+            name="press_key",
+            description="Press an authorized keyboard key (e.g. 'enter', 'tab', 'esc', 'backspace', 'up', 'down').",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Key name from allowlist (e.g. 'enter', 'tab', 'space', 'esc').",
+                    }
+                },
+                "required": ["key"],
+            },
+            risk_level=RiskLevel.LOW,
+            category="keyboard",
+        )(press_key)
+
+        self.register(
+            name="hotkey",
+            description="Trigger a keyboard shortcut combination (e.g. 'ctrl+c', 'ctrl+v', 'alt+tab', 'win+d').",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "keys": {
+                        "type": "string",
+                        "description": "Key combination (e.g. 'ctrl+c', 'ctrl+v', 'alt+tab').",
+                    }
+                },
+                "required": ["keys"],
+            },
+            risk_level=RiskLevel.LOW,
+            category="keyboard",
+        )(hotkey)
+
+        # 9. Window Inspection
+        self.register(
+            name="get_active_window",
+            description="Get the title and process of the currently active desktop window.",
+            parameters_schema={"type": "object", "properties": {}},
+            risk_level=RiskLevel.LOW,
+            category="window_info",
+        )(get_active_window)
+
+        self.register(
+            name="get_open_windows",
+            description="List all open user-facing application windows on the desktop.",
+            parameters_schema={"type": "object", "properties": {}},
+            risk_level=RiskLevel.LOW,
+            category="window_info",
+        )(get_open_windows)
+
+        # 10. Computer Vision & Screen Understanding
+        self.register(
+            name="analyze_screen",
+            description="Capture screen and use local vision to identify visible UI elements, controls, and active windows.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Optional specific question or element to look for on screen.",
+                    }
+                },
+            },
+            risk_level=RiskLevel.LOW,
+            category="vision",
+        )(analyze_screen)
+
+        self.register(
+            name="click_element",
+            description="Visually locate a UI element (button, link, search box) by name and click it securely.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "element_label": {
+                        "type": "string",
+                        "description": "Name or text of the control to click (e.g. 'Search', 'Submit', 'Address bar').",
+                    }
+                },
+                "required": ["element_label"],
+            },
+            risk_level=RiskLevel.LOW,
+            category="vision",
+        )(click_element)
 
 
 # Global tool registry singleton

@@ -74,6 +74,55 @@ REJECTED_CONFIRMATION_TOKENS: Set[str] = {
     "nevermind",
 }
 
+# V4 Keyboard & Mouse Security Controls
+ALLOWED_KEYS: Set[str] = {
+    # Alphanumeric & Symbols
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+    "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    "space", "tab", "enter", "return", "backspace", "delete", "del", "esc", "escape",
+    # Navigation
+    "up", "down", "left", "right", "home", "end", "pageup", "pagedown", "insert",
+    # Modifiers
+    "ctrl", "control", "alt", "shift", "win", "windows",
+    # Function keys
+    "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+}
+
+# Explicit Hotkey Allowlists
+SAFE_HOTKEYS: Set[str] = {
+    "ctrl+c", "ctrl+v", "ctrl+x", "ctrl+a", "ctrl+z", "ctrl+y", "ctrl+s", "ctrl+f",
+    "ctrl+p", "ctrl+w", "ctrl+t", "ctrl+r", "ctrl+n", "ctrl+o", "ctrl+l", "ctrl+k",
+    "alt+tab", "alt+left", "alt+right", "alt+enter",
+    "win+d", "win+e", "win+r", "win+s", "win+l", "win+tab", "win+up", "win+down", "win+left", "win+right",
+    "ctrl+shift+esc", "ctrl+shift+t", "ctrl+shift+n",
+}
+
+DANGEROUS_HOTKEYS: Set[str] = {
+    "shift+delete",
+    "alt+f4",
+    "ctrl+alt+delete",
+    "ctrl+alt+del",
+}
+
+# Dangerous / Sensitive UI labels requiring explicit user authorization
+PROTECTED_UI_ELEMENTS: Set[str] = {
+    "delete",
+    "permanently delete",
+    "format",
+    "uninstall",
+    "reset",
+    "shutdown",
+    "shut down",
+    "restart",
+    "factory reset",
+    "remove account",
+    "disable security",
+    "erase",
+    "wipe",
+}
+
+
 
 @dataclass
 class ValidationResult:
@@ -273,6 +322,91 @@ class ToolSecurityValidator:
 
         return False
 
+    def validate_mouse_coordinates(
+        self, x: Any, y: Any, screen_width: int, screen_height: int
+    ) -> Tuple[int, int]:
+        """
+        Validate mouse screen coordinates against actual display bounds.
+        Rejects non-numeric, NaN, Infinity, negative, or out-of-bounds coordinates.
+        """
+        import math
+
+        if isinstance(x, bool) or isinstance(y, bool):
+            raise SecurityViolation("Coordinates cannot be boolean values.")
+
+        if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+            raise SecurityViolation(
+                f"Coordinates must be numeric, got x={type(x).__name__}, y={type(y).__name__}"
+            )
+
+        if math.isnan(x) or math.isinf(x) or math.isnan(y) or math.isinf(y):
+            raise SecurityViolation("Coordinates cannot be NaN or Infinity.")
+
+        target_x = int(round(x))
+        target_y = int(round(y))
+
+        if target_x < 0 or target_x >= screen_width or target_y < 0 or target_y >= screen_height:
+            raise SecurityViolation(
+                f"Coordinates ({target_x}, {target_y}) are out of screen bounds ({screen_width}x{screen_height})."
+            )
+
+        return target_x, target_y
+
+    def validate_key(self, key_str: str) -> str:
+        """
+        Validate a single keyboard key against the safe allowlist.
+        """
+        if not key_str or not str(key_str).strip():
+            raise SecurityViolation("Key parameter cannot be empty.")
+
+        clean_key = str(key_str).strip().lower()
+        if clean_key not in ALLOWED_KEYS:
+            raise SecurityViolation(f"Key '{key_str}' is not in the authorized keyboard allowlist.")
+
+        return clean_key
+
+    def validate_hotkey(self, hotkey_str: str) -> Tuple[List[str], RiskLevel]:
+        """
+        Validate a keyboard shortcut combination against safe and dangerous allowlists.
+        Returns the parsed key components and the assigned RiskLevel (LOW or HIGH).
+        """
+        if not hotkey_str or not str(hotkey_str).strip():
+            raise SecurityViolation("Hotkey parameter cannot be empty.")
+
+        raw_parts = [p.strip().lower() for p in re.split(r"[+\-\s]+", str(hotkey_str).strip()) if p.strip()]
+        if not raw_parts:
+            raise SecurityViolation("Invalid hotkey format.")
+
+        # Validate each key component
+        validated_keys = [self.validate_key(p) for p in raw_parts]
+        combo_str = "+".join(validated_keys)
+
+        # Check dangerous hotkeys (HIGH risk - require explicit user confirmation)
+        if combo_str in DANGEROUS_HOTKEYS:
+            return validated_keys, RiskLevel.HIGH
+
+        # Check safe hotkeys
+        if combo_str in SAFE_HOTKEYS:
+            return validated_keys, RiskLevel.LOW
+
+        # Allow basic modifier combinations (e.g. ctrl+a..z, alt+a..z, win+a..z)
+        if len(validated_keys) == 2 and validated_keys[0] in {"ctrl", "control", "alt", "win", "shift"} and len(validated_keys[1]) == 1 and validated_keys[1].isalnum():
+            return validated_keys, RiskLevel.LOW
+
+        raise SecurityViolation(
+            f"Hotkey '{hotkey_str}' is not in the authorized hotkey allowlist."
+        )
+
+    def is_protected_ui_element(self, label: str) -> bool:
+        """
+        Check if a UI element label indicates a sensitive or destructive action.
+        """
+        if not label:
+            return False
+        clean = label.strip().lower()
+        return any(term in clean for term in PROTECTED_UI_ELEMENTS)
+
 
 # Global security validator instance
 security_validator = ToolSecurityValidator()
+

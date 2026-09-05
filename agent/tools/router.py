@@ -32,7 +32,9 @@ COMPUTER_INTENT_KEYWORDS = {
     "screenshot", "screen", "capture", "grab", "settings",
     "volume", "mute", "unmute", "louder", "quieter", "play", "pause", "music",
     "browse", "browser", "website", "url", "explorer", "folder", "file", "app", "application",
-    "taskmgr", "taskmanager", "paint", "notepad", "word", "excel", "calculator", "calc", "chrome", "vscode"
+    "taskmgr", "taskmanager", "paint", "notepad", "word", "excel", "calculator", "calc", "chrome", "vscode",
+    "click", "mouse", "type", "press", "key", "hotkey", "window", "windows", "look", "active", "scroll",
+    "element", "search", "analyze"
 }
 
 
@@ -167,6 +169,50 @@ class ToolRouter:
             return "volume_down", {"steps": 2}
         if re.match(r"^(mute|unmute|mute volume|toggle mute|silence)$", t):
             return "volume_mute", {}
+
+        # V4 Vision & Screen Inspection
+        if re.match(r"^(look at (my |the )?screen|what is on (my |the )?screen|what is open on (my |the )?screen|analyze (my |the )?screen)$", t):
+            return "analyze_screen", {}
+        if re.match(r"^(what (app|application) is (currently )?open|what window is active|what is the active window)$", t):
+            return "get_active_window", {}
+        if re.match(r"^(what windows are open|show open windows|list open windows)$", t):
+            return "get_open_windows", {}
+
+        # V4 Mouse Controls
+        m_coord = re.match(r"^move\s+(the\s+)?mouse\s+to\s+(\d+)[\s,]+(\d+)$", t)
+        if m_coord:
+            return "move_mouse", {"x": int(m_coord.group(2)), "y": int(m_coord.group(3))}
+
+        m_move_el = re.match(r"^move\s+(the\s+)?mouse\s+to\s+(the\s+)?(.+)$", t)
+        if m_move_el:
+            return "click_element", {"element_label": m_move_el.group(3)}
+
+        m_click_el = re.match(r"^click\s+(the\s+)?(.+)$", t)
+        if m_click_el:
+            return "click_element", {"element_label": m_click_el.group(2)}
+
+        if re.match(r"^(double click|double-click)$", t):
+            return "double_click", {}
+        if re.match(r"^(right click|right-click)$", t):
+            return "right_click", {}
+
+        m_scroll = re.match(r"^scroll\s+(up|down)$", t)
+        if m_scroll:
+            amt = 5 if m_scroll.group(1) == "up" else -5
+            return "scroll", {"amount": amt}
+
+        # V4 Keyboard Controls
+        m_type = re.match(r"^type\s+(.+)$", t)
+        if m_type:
+            return "type_text", {"text": m_type.group(1)}
+
+        m_press = re.match(r"^press\s+(enter|esc|escape|tab|space|backspace|delete|del|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$", t)
+        if m_press:
+            return "press_key", {"key": m_press.group(1)}
+
+        m_hotkey = re.match(r"^(press\s+)?(ctrl\+[a-z0-9\+]+|alt\+[a-z0-9\+]+|win\+[a-z0-9\+]+|shift\+[a-z0-9\+]+)$", t)
+        if m_hotkey:
+            return "hotkey", {"keys": m_hotkey.group(2)}
 
         return None
 

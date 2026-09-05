@@ -10,8 +10,13 @@ import numpy as np
 from agent.wakeword.detector import OpenWakeWordDetector
 
 
-def test_detector_initialization():
-    detector = OpenWakeWordDetector(wake_word="jarvis", threshold=0.5, cooldown_seconds=1.0)
+@pytest.fixture(scope="module")
+def detector():
+    """Shared OpenWakeWordDetector instance to minimize ONNX memory allocations."""
+    return OpenWakeWordDetector(wake_word="jarvis", threshold=0.5, cooldown_seconds=1.0)
+
+
+def test_detector_initialization(detector):
     assert detector.wake_word == "jarvis"
     assert detector.threshold == 0.5
     assert detector.cooldown_seconds == 1.0
@@ -19,8 +24,8 @@ def test_detector_initialization():
     assert detector._model_key is not None
 
 
-def test_detector_silent_frame():
-    detector = OpenWakeWordDetector(wake_word="jarvis", threshold=0.5)
+def test_detector_silent_frame(detector):
+    detector.reset()
     silent_frame = np.zeros(1280, dtype=np.int16)
 
     # Silent frame should not trigger detection
@@ -28,8 +33,8 @@ def test_detector_silent_frame():
     assert detected is False
 
 
-def test_detector_suppression_self_trigger_protection():
-    detector = OpenWakeWordDetector(wake_word="jarvis", threshold=0.5)
+def test_detector_suppression_self_trigger_protection(detector):
+    detector.reset()
     detector.set_suppressed(True)
     assert detector.is_suppressed is True
 
@@ -41,8 +46,9 @@ def test_detector_suppression_self_trigger_protection():
     assert detector.is_suppressed is False
 
 
-def test_detector_cooldown():
-    detector = OpenWakeWordDetector(wake_word="jarvis", threshold=0.0, cooldown_seconds=2.0)
+def test_detector_cooldown(detector):
+    detector.reset()
+    detector.cooldown_seconds = 2.0
     detector._last_detection_time = time.time() - 0.5  # Only 0.5s ago
 
     dummy_frame = np.zeros(1280, dtype=np.int16)
@@ -51,5 +57,6 @@ def test_detector_cooldown():
 
     # Simulate time passed beyond cooldown
     detector._last_detection_time = time.time() - 3.0
-    # Now cooldown check passes (prediction executes)
     detector.reset()
+    detector.cooldown_seconds = 1.0
+

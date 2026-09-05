@@ -63,9 +63,41 @@ def _capture_screen_win32() -> Image.Image:
     return Image.frombuffer("RGBA", (w, h), buffer, "raw", "BGRA", 0, 1).convert("RGB")
 
 
+def prune_old_screenshots(screenshots_dir: Path, max_keep: int):
+    """Prune oldest screenshot files when exceeding retention limit."""
+    if max_keep <= 0:
+        return
+
+    try:
+        files = list(screenshots_dir.glob("screenshot_*.png")) + list(screenshots_dir.glob("*.png"))
+        files = list(set(files))
+        if len(files) > max_keep:
+            # Sort by modification time ascending (oldest first)
+            files.sort(key=lambda p: p.stat().st_mtime)
+            to_delete = files[: len(files) - max_keep]
+            for f in to_delete:
+                try:
+                    f.unlink()
+                    logger.debug(f"Pruned old screenshot: {f.name}")
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warning(f"Error during screenshot pruning: {e}")
+
+
+def capture_screen_image() -> Image.Image:
+    """Capture current desktop image into a PIL Image object."""
+    if sys.platform == "win32":
+        return _capture_screen_win32()
+    else:
+        from PIL import ImageGrab
+        return ImageGrab.grab()
+
+
 def take_screenshot(filename: Optional[str] = None) -> str:
     """
     Capture a screenshot of the current screen and save to the workspace data/screenshots directory.
+    Enforces retention count to prevent unlimited disk usage.
     """
     screenshots_dir = Path(settings.jarvis_workspace) / "data" / "screenshots"
     screenshots_dir.mkdir(parents=True, exist_ok=True)
@@ -83,16 +115,22 @@ def take_screenshot(filename: Optional[str] = None) -> str:
     validated_path = security_validator.validate_path(str(target_path))
 
     try:
-        if sys.platform == "win32":
-            img = _capture_screen_win32()
-        else:
-            from PIL import ImageGrab
-            img = ImageGrab.grab()
+        img = capture_screen_image()
 
-        img.save(str(validated_path), "PNG")
-        summary = f"Screenshot captured ({img.width}x{img.height}) and saved to data/screenshots/{validated_path.name}, sir."
+        if getattr(settings, "screenshot_save_enabled", True):
+            img.save(str(validated_path), "PNG")
+            # Enforce retention pruning
+            prune_old_screenshots(
+                screenshots_dir,
+                getattr(settings, "screenshot_retention_count", 20),
+            )
+            summary = f"Screenshot captured ({img.width}x{img.height}) and saved to data/screenshots/{validated_path.name}, sir."
+        else:
+            summary = f"Screenshot captured in memory ({img.width}x{img.height}), sir."
+
         SecurityAuditLogger.log_execution("take_screenshot", True, summary)
         return summary
     except Exception as e:
         SecurityAuditLogger.log_execution("take_screenshot", False, str(e))
         return f"Unable to capture screenshot: {e}"
+
