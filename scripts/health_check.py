@@ -120,7 +120,7 @@ def check_stt() -> bool:
         from agent.voice.stt import LocalWhisperSTT
 
         stt_engine = LocalWhisperSTT()
-        if stt_engine.model:
+        if stt_engine.whisper_model:
             print_status(
                 "Whisper STT",
                 True,

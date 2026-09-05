@@ -13,6 +13,7 @@ from faster_whisper import WhisperModel
 import livekit.rtc as rtc
 from livekit.agents import stt, vad
 from livekit.agents.types import APIConnectOptions, NOT_GIVEN, NotGivenOr
+from livekit.agents.utils import AudioBuffer
 
 from agent.config import settings
 
@@ -39,7 +40,7 @@ class LocalWhisperSTT(stt.STT):
         self.model_size = model_size or settings.whisper_model_size
         self.requested_device = device or settings.whisper_device
         self.compute_type = compute_type or settings.whisper_compute_type
-        self.model: Optional[WhisperModel] = None
+        self.whisper_model: Optional[WhisperModel] = None
         self._load_model()
 
     def _load_model(self):
@@ -51,7 +52,7 @@ class LocalWhisperSTT(stt.STT):
             logger.info(
                 f"Loading faster-whisper model '{self.model_size}' on device={device} (compute_type={compute_type})..."
             )
-            self.model = WhisperModel(
+            self.whisper_model = WhisperModel(
                 self.model_size,
                 device=device,
                 compute_type=compute_type,
@@ -62,7 +63,7 @@ class LocalWhisperSTT(stt.STT):
                 logger.warning(
                     f"Failed to load faster-whisper on {device} ({e}). Falling back to CPU int8..."
                 )
-                self.model = WhisperModel(
+                self.whisper_model = WhisperModel(
                     self.model_size,
                     device="cpu",
                     compute_type="int8",
@@ -74,13 +75,13 @@ class LocalWhisperSTT(stt.STT):
 
     async def _recognize_impl(
         self,
-        buffer: rtc.AudioBuffer,
+        buffer: AudioBuffer,
         *,
         language: NotGivenOr[str] = NOT_GIVEN,
         conn_options: APIConnectOptions,
     ) -> stt.SpeechEvent:
         """Transcribe an audio buffer into text using faster-whisper."""
-        if not self.model:
+        if not self.whisper_model:
             raise RuntimeError("Whisper model is not initialized")
 
         # Combine audio buffer into a single AudioFrame
@@ -98,7 +99,7 @@ class LocalWhisperSTT(stt.STT):
 
         # Run inference in worker thread to prevent blocking the async loop
         def _transcribe():
-            segments, info = self.model.transcribe(
+            segments, info = self.whisper_model.transcribe(
                 np_audio,
                 beam_size=5,
                 language=lang,
