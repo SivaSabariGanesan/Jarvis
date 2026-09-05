@@ -1,0 +1,22 @@
+[project]
+name = "jarvis"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "faster-whisper>=1.2.1",
+    "httpx>=0.28.1",
+    "livekit-agents>=1.8.0",
+    "livekit-plugins-openai>=1.8.0",
+    "livekit-plugins-silero>=1.8.0",
+    "numpy>=2.4.6",
+    "piper-tts>=1.8.0",
+    "pydantic-settings>=2.15.0",
+    "python-dotenv>=1.2.3",
+    "soundfile>=0.14.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

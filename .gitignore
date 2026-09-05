@@ -1,0 +1,28 @@
+# Environment variables
+.env
+.env.local
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ollama / Data / Models
+data/
+docker/data/
+*.onnx
+*.onnx.json
+
+# LiveKit logs
+*.log
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
