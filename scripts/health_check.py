@@ -148,21 +148,46 @@ def check_livekit_config() -> bool:
         return False
 
 
+def check_wakeword() -> bool:
+    try:
+        from agent.wakeword import OpenWakeWordDetector
+
+        detector = OpenWakeWordDetector(
+            wake_word=settings.wake_word,
+            model_path=settings.wake_word_model_path if settings.wake_word_model_path else None,
+            threshold=settings.wake_word_threshold,
+        )
+        if detector._model:
+            print_status(
+                "Wake Word Engine",
+                True,
+                f"openWakeWord ready for word '{settings.wake_word}' (threshold={settings.wake_word_threshold})",
+            )
+            return True
+        else:
+            print_status("Wake Word Engine", False, "Failed to load wake-word model")
+            return False
+    except Exception as e:
+        print_status("Wake Word Engine", False, f"Error: {e}")
+        return False
+
+
 async def main():
     print("=" * 60)
-    print(f" {settings.jarvis_name} System Health & Diagnostics")
+    print(f" {settings.jarvis_name} System Health & Diagnostics (V2)")
     print("=" * 60)
 
     docker_ok = await check_docker()
     gpu_ok = check_gpu()
     ollama_ok = await check_ollama()
+    wakeword_ok = check_wakeword()
     stt_ok = check_stt()
     tts_ok = check_tts()
     livekit_ok = check_livekit_config()
 
     print("=" * 60)
-    if docker_ok and ollama_ok and stt_ok and tts_ok:
-        print("\033[92m[OK] All core local components are healthy and ready!\033[0m")
+    if docker_ok and ollama_ok and wakeword_ok and stt_ok and tts_ok:
+        print("\033[92m[OK] All core local V2 components are healthy and ready!\033[0m")
     else:
         print("\033[93m[!] Some components need attention before running full voice sessions.\033[0m")
     print("=" * 60)

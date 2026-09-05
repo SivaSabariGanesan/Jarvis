@@ -55,7 +55,9 @@ class LocalWhisperSTT(stt.STT):
             self.whisper_model = WhisperModel(
                 self.model_size,
                 device=device,
+                device_index=0 if device == "cuda" else 0,
                 compute_type=compute_type,
+                cpu_threads=4,
             )
             logger.info(f"faster-whisper model '{self.model_size}' successfully loaded on {device}.")
         except Exception as e:
@@ -67,6 +69,7 @@ class LocalWhisperSTT(stt.STT):
                     self.model_size,
                     device="cpu",
                     compute_type="int8",
+                    cpu_threads=4,
                 )
                 logger.info(f"faster-whisper model '{self.model_size}' loaded on CPU fallback.")
             else:

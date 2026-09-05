@@ -28,13 +28,21 @@ class JarvisSettings(BaseSettings):
     livekit_api_key: str = Field(default="", alias="LIVEKIT_API_KEY")
     livekit_api_secret: str = Field(default="", alias="LIVEKIT_API_SECRET")
 
-    # STT (Speech-to-Text)
+    # STT (Speech-to-Text) - Run on CPU to reserve full GPU VRAM for Ollama LLM
     whisper_model_size: str = Field(default="base.en", alias="WHISPER_MODEL_SIZE")
-    whisper_device: str = Field(default="cuda", alias="WHISPER_DEVICE")
-    whisper_compute_type: str = Field(default="float16", alias="WHISPER_COMPUTE_TYPE")
+    whisper_device: str = Field(default="cpu", alias="WHISPER_DEVICE")
+    whisper_compute_type: str = Field(default="int8", alias="WHISPER_COMPUTE_TYPE")
+    whisper_cpu_threads: int = Field(default=4, alias="WHISPER_CPU_THREADS")
 
     # TTS (Text-to-Speech)
     piper_voice: str = Field(default="en_US-lessac-medium", alias="PIPER_VOICE")
+
+    # Wake Word (Local Detection)
+    wake_word: str = Field(default="jarvis", alias="WAKE_WORD")
+    wake_word_model_path: str = Field(default="", alias="WAKE_WORD_MODEL_PATH")
+    wake_word_threshold: float = Field(default=0.5, alias="WAKE_WORD_THRESHOLD")
+    wake_word_cooldown: float = Field(default=1.0, alias="WAKE_WORD_COOLDOWN")
+    wake_word_activation_response: str = Field(default="Yes, sir?", alias="WAKE_WORD_ACTIVATION_RESPONSE")
 
     # Memory / Storage
     sqlite_db_path: str = Field(default="data/jarvis_memory.db", alias="SQLITE_DB_PATH")

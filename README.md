@@ -211,23 +211,98 @@ Expected output:
 
 ---
 
-## 8. Running JARVIS
+## 8. V2 — Local "Jarvis" Wake Word
 
-Start the JARVIS agent worker in development mode (with auto-reload):
+JARVIS V2 operates as a **fully local, privacy-first voice assistant** with real-time wake-word detection for the keyword **"Jarvis"**.
 
-```bash
-uv run python -m agent.main dev
+### V2 Architecture Diagram
+
+```text
+                 🎤 MICROPHONE
+                       │
+                       ▼
+              ┌─────────────────┐
+              │ Local Wake Word │  (openWakeWord / ONNX on CPU)
+              │   Detector      │
+              └────────┬────────┘
+                       │
+                  "Jarvis"
+                       │
+                       ▼
+                🟢 ACTIVATED (State: LISTENING)
+                       │
+                       ▼
+              ┌─────────────────┐
+              │      VAD        │  (Silero VAD on CPU)
+              │  Silero VAD     │
+              └────────┬────────┘
+                       │
+                       ▼
+              ┌─────────────────┐
+              │ Faster-Whisper  │  (Faster-Whisper on CPU int8)
+              │      STT        │
+              └────────┬────────┘
+                       │
+                       ▼
+              ┌─────────────────┐
+              │  JARVIS AGENT   │  (State Machine: PROCESSING)
+              │ Reasoning Engine│
+              └────────┬────────┘
+                       │
+                       ▼
+              ┌─────────────────┐
+              │     Ollama      │  (NVIDIA RTX 4050 GPU)
+              │   Docker        │
+              │ Llama 3.2 3B    │
+              └────────┬────────┘
+                       │
+                       ▼
+              ┌─────────────────┐
+              │    Piper TTS    │  (Piper TTS on CPU)
+              └────────┬────────┘
+                       │
+                       ▼
+                   🔊 SPEAKER (State: SPEAKING)
+                       │
+                       ▼
+                 Return to IDLE (Waiting for "Jarvis")
 ```
 
-### Initial Voice Interaction Test
+### Resource Allocation (GPU vs CPU)
+To prevent GPU VRAM contention and eliminate CUDA Out-Of-Memory errors on 6GB laptop GPUs:
+- **RTX 4050 GPU**: Dedicated 100% to **Ollama (`llama3.2:3b`)**.
+- **CPU / RAM**: Runs **openWakeWord**, **Faster-Whisper (`int8`)**, **Silero VAD**, and **Piper TTS**.
 
-1. Open [https://agents-playground.livekit.io](https://agents-playground.livekit.io) (or your local frontend).
-2. Connect to the room using your LiveKit Cloud or local dev credentials.
-3. JARVIS will speak upon connection:
-   > *"Hello, sir. I'm ready. I can currently listen, understand your requests, reason using the local AI model, and respond through voice."*
-4. Speak into your microphone:
-   > *"Hey Jarvis, what can you do?"*
-5. JARVIS will transcribe your voice locally, reason with `llama3.2:3b`, synthesize the response with Piper TTS, and speak back in real-time.
+### Finite State Machine
+```text
+  IDLE ──(detects "Jarvis")──► LISTENING ──(end of speech)──► PROCESSING ──(response ready)──► SPEAKING ──► IDLE
+```
+* **Self-Trigger Protection**: While in `SPEAKING` state, wake-word detection is automatically suppressed to prevent JARVIS from triggering on its own voice output.
+
+### Configuration (`.env`)
+```env
+# Wake Word Engine (openWakeWord / ONNX)
+WAKE_WORD=jarvis
+WAKE_WORD_MODEL_PATH=
+WAKE_WORD_THRESHOLD=0.5
+WAKE_WORD_COOLDOWN=1.0
+WAKE_WORD_ACTIVATION_RESPONSE="Yes, sir?"
+
+# STT on CPU (reserves all VRAM for Ollama)
+WHISPER_DEVICE=cpu
+WHISPER_COMPUTE_TYPE=int8
+WHISPER_CPU_THREADS=4
+```
+
+### Running V2
+1. **Standalone Direct Voice Runner (Mic + Speakers)**:
+   ```bash
+   .venv\Scripts\python.exe jarvis_local.py
+   ```
+2. **LiveKit Agent Worker**:
+   ```bash
+   .venv\Scripts\python.exe main.py dev
+   ```
 
 ---
 
@@ -237,14 +312,14 @@ uv run python -m agent.main dev
 | :--- | :--- | :--- |
 | **`Cannot connect to Ollama at http://localhost:11434`** | Ollama container is not running | Run `docker compose up -d` and check `docker compose ps`. |
 | **`Target model 'llama3.2:3b' not found`** | Model hasn't been pulled into Ollama volume | Run `docker exec -it jarvis-ollama ollama pull llama3.2:3b`. |
-| **`CUDA out of memory`** | Large model loaded concurrently with STT/TTS | Use a 3B model (`llama3.2:3b` or `qwen2.5:3b`) and `base.en` Whisper model. |
+| **`CUDA out of memory in Ollama`** | Whisper STT or background tools competing for VRAM | Set `WHISPER_DEVICE=cpu` and `WHISPER_COMPUTE_TYPE=int8` in `.env` so GPU is 100% reserved for Ollama. |
 | **`LiveKit connection timeout`** | Invalid `LIVEKIT_URL` or missing API keys | Verify `.env` credentials against your LiveKit project dashboard. |
-| **`Whisper STT loading error on CUDA`** | Missing cuDNN or CUDA libraries in PATH | The agent will automatically fall back to CPU int8 inference. Set `WHISPER_DEVICE=cpu` in `.env` if desired. |
+| **`Wake word not triggering`** | Background noise or low mic input | Lower `WAKE_WORD_THRESHOLD=0.4` in `.env`. |
 
 ---
 
 ## 10. Future Milestones (Roadmap)
 
-- **Milestone 2**: Memory expansion (Vector DB + SQLite embeddings).
 - **Milestone 3**: Controlled computer tools (App launching, file search, web retrieval).
 - **Milestone 4**: Vision & multimodal desktop understanding.
+
