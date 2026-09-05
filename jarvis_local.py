@@ -86,6 +86,19 @@ class JarvisLocalVoiceV2:
         self.messages = [{"role": "system", "content": JARVIS_SYSTEM_PROMPT}]
         print(f"\033[92m[OK] Ollama ready at {self.ollama_host}.\033[0m", flush=True)
 
+        # Pre-warm Ollama model in background so first user request is instant (<0.4s)
+        def _prewarm_llm():
+            try:
+                httpx.post(
+                    f"{self.ollama_host}/api/chat",
+                    json={"model": settings.ollama_model, "messages": [{"role": "user", "content": "hi"}], "stream": False},
+                    timeout=60.0,
+                )
+            except Exception:
+                pass
+
+        threading.Thread(target=_prewarm_llm, daemon=True).start()
+
         self.sample_rate = 16000
         self.chunk_size = 1280  # 80ms chunks for openWakeWord
         self._running = False
