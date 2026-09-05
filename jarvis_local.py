@@ -1,7 +1,7 @@
 """
 JARVIS V2 Standalone Local Voice Assistant.
-100% Local Execution with continuous hands-free "Jarvis" Wake-Word Detection.
-Pipeline: Microphone -> OpenWakeWord ("Jarvis") -> Faster-Whisper -> Ollama (Llama 3.2) -> Piper TTS -> Speakers.
+100% Local Execution with continuous hands-free "Jarvis" Wake-Word Detection AND Direct Typing option.
+Pipeline: Microphone / Keyboard -> OpenWakeWord / Text -> Faster-Whisper (CPU) -> Ollama (GPU) -> Piper TTS (CPU) -> Speakers.
 """
 
 import os
@@ -36,12 +36,14 @@ logger = logging.getLogger("jarvis.local")
 
 class JarvisLocalVoiceV2:
     """
-    JARVIS V2 Standalone Voice Assistant with continuous local wake-word detection.
+    JARVIS V2 Standalone Voice Assistant supporting both:
+    1. Hands-free "Jarvis" Wake-Word voice interaction.
+    2. Direct keyboard text typing.
     """
 
     def __init__(self):
         print("\033[96m" + "=" * 65)
-        print(f"  INITIALIZING {settings.jarvis_name} V2 — LOCAL WAKE WORD ('{settings.wake_word.upper()}')")
+        print(f"  INITIALIZING {settings.jarvis_name} V2 — LOCAL VOICE & TEXT ASSISTANT")
         print("=" * 65 + "\033[0m")
 
         self.state_machine = StateMachine(AgentState.IDLE)
@@ -59,18 +61,19 @@ class JarvisLocalVoiceV2:
         )
         print(f"\033[92m[OK] Wake-word engine initialized (Threshold: {settings.wake_word_threshold}).\033[0m")
 
-        # 2. Faster-Whisper STT
+        # 2. Faster-Whisper STT (Configured on CPU to leave GPU VRAM for Ollama)
         print(f"[2/4] Loading Faster-Whisper STT ({settings.whisper_model_size} on {settings.whisper_device})...")
         try:
             self.stt_model = WhisperModel(
                 settings.whisper_model_size,
                 device=settings.whisper_device,
                 compute_type=settings.whisper_compute_type,
+                cpu_threads=getattr(settings, "whisper_cpu_threads", 4),
             )
-            print(f"\033[92m[OK] Faster-Whisper loaded on {settings.whisper_device}.\033[0m")
+            print(f"\033[92m[OK] Faster-Whisper loaded on {settings.whisper_device} ({settings.whisper_compute_type}).\033[0m")
         except Exception as e:
-            print(f"\033[93m[!] GPU fallback to CPU int8: {e}\033[0m")
-            self.stt_model = WhisperModel(settings.whisper_model_size, device="cpu", compute_type="int8")
+            print(f"\033[93m[!] CPU fallback: {e}\033[0m")
+            self.stt_model = WhisperModel(settings.whisper_model_size, device="cpu", compute_type="int8", cpu_threads=4)
 
         # 3. Piper TTS
         print(f"[3/4] Loading Piper TTS ({settings.piper_voice})...")
@@ -86,6 +89,8 @@ class JarvisLocalVoiceV2:
         self.sample_rate = 16000
         self.chunk_size = 1280  # 80ms chunks for wake-word engine
         self._running = False
+        self._lock = threading.Lock()
+        self._wake_triggered = threading.Event()
 
         print("\033[92m" + "=" * 65)
         print(f"  [INFO] JARVIS V2 ONLINE. ALL SYSTEMS OPERATIONAL.")
@@ -100,7 +105,7 @@ class JarvisLocalVoiceV2:
             self.wakeword_detector.set_suppressed(True)
             self.state_machine.transition_to(AgentState.SPEAKING)
 
-        print(f"\n\033[94m{settings.jarvis_name}:\033[0m {text}")
+        print(f"\n\033[94m{settings.jarvis_name}:\033[0m {text}\n")
         self.db.log_message(session_id=self.session_id, role="assistant", content=text)
         self.messages.append({"role": "assistant", "content": text})
 
@@ -184,8 +189,87 @@ class JarvisLocalVoiceV2:
         segments, _ = self.stt_model.transcribe(audio_data, beam_size=5, vad_filter=True)
         return " ".join(seg.text for seg in segments).strip()
 
+    def _wakeword_listener_worker(self):
+        """Background thread listening for the 'Jarvis' wake word from microphone."""
+        try:
+            with sd.InputStream(
+                samplerate=self.sample_rate,
+                channels=1,
+                dtype="int16",
+                blocksize=self.chunk_size,
+            ) as mic_stream:
+                while self._running:
+                    if self.state_machine.is_state(AgentState.IDLE):
+                        try:
+                            audio_chunk, _ = mic_stream.read(self.chunk_size)
+                            detected = self.wakeword_detector.process_frame(audio_chunk)
+                            if detected:
+                                self._wake_triggered.set()
+                        except Exception as e:
+                            time.sleep(0.05)
+                    else:
+                        time.sleep(0.05)
+        except Exception as e:
+            logger.error(f"Wake word mic stream error: {e}")
+
+    def handle_voice_interaction(self):
+        """Execute the full voice interaction pipeline after wake-word trigger."""
+        with self._lock:
+            self._wake_triggered.clear()
+            print("\n\033[96m" + "*" * 50)
+            print(f"  [INFO] Wake word '{settings.wake_word}' detected!")
+            print("*" * 50 + "\033[0m")
+
+            # 1. State: LISTENING
+            self.state_machine.transition_to(AgentState.LISTENING)
+
+            # Spoken response: "Yes, sir?"
+            activation_phrase = settings.wake_word_activation_response.strip('"')
+            self.speak(activation_phrase, suppress_wakeword=False)
+
+            # 2. Capture voice command
+            audio_command = self.record_command()
+            if audio_command is None:
+                print("\033[90m[INFO] No speech detected. Returning to IDLE.\033[0m\n")
+                self.state_machine.transition_to(AgentState.IDLE)
+                return
+
+            # 3. State: PROCESSING
+            self.state_machine.transition_to(AgentState.PROCESSING)
+            user_text = self.transcribe(audio_command)
+            if not user_text:
+                print("\033[90m[INFO] Could not understand speech. Returning to IDLE.\033[0m\n")
+                self.state_machine.transition_to(AgentState.IDLE)
+                return
+
+            print(f"\033[93mUser (Voice):\033[0m {user_text}")
+
+            # 4. Query LLM
+            print("\033[90m[INFO] Sending request to Ollama...\033[0m", flush=True)
+            response_text = self.ask_llm(user_text)
+
+            # 5. State: SPEAKING -> IDLE
+            self.speak(response_text, suppress_wakeword=True)
+
+    def handle_text_interaction(self, user_text: str):
+        """Execute text interaction pipeline."""
+        with self._lock:
+            user_text = user_text.strip()
+            if not user_text:
+                return
+
+            print(f"\033[93mUser (Text):\033[0m {user_text}")
+
+            # 1. State: PROCESSING
+            self.state_machine.transition_to(AgentState.PROCESSING)
+            print("\033[90m[INFO] Sending request to Ollama...\033[0m", flush=True)
+            response_text = self.ask_llm(user_text)
+
+            # 2. State: SPEAKING -> IDLE
+            self.speak(response_text, suppress_wakeword=True)
+
     def run(self):
-        """Continuous main loop with hands-free wake word detection."""
+        """Main interaction loop supporting concurrent Voice Wake Word & Keyboard input."""
         self._running = True
         self.state_machine.transition_to(AgentState.IDLE)
 
@@ -194,83 +278,47 @@ class JarvisLocalVoiceV2:
 
         print("\033[97m" + "-" * 65)
         print("  JARVIS V2 CONTROLS:")
-        print("   • Say 'Jarvis' hands-free to activate")
-        print("   • Press Ctrl+C in terminal to exit")
+        print("   • [VOICE]: Say 'Jarvis' hands-free to speak")
+        print("   • [TEXT]:  Type your message below and press [ENTER]")
+        print("   • [EXIT]:  Type 'exit' or press Ctrl+C to quit")
         print("-" * 65 + "\033[0m\n")
 
-        print(f"\033[90m[INFO] State: {self.state_machine.current_state.value}\033[0m")
-        print(f"\033[92m[INFO] Waiting for wake word '{settings.wake_word}'...\033[0m\n")
+        # Start background wake-word listener thread
+        listener_thread = threading.Thread(target=self._wakeword_listener_worker, daemon=True)
+        listener_thread.start()
 
-        with sd.InputStream(
-            samplerate=self.sample_rate,
-            channels=1,
-            dtype="int16",
-            blocksize=self.chunk_size,
-        ) as mic_stream:
+        while self._running:
+            try:
+                # Check if wake word triggered in background
+                if self._wake_triggered.is_set():
+                    self.handle_voice_interaction()
+                    continue
 
-            while self._running:
-                try:
-                    # 1. State: IDLE — Read mic chunk for wake-word detection
-                    if self.state_machine.is_state(AgentState.IDLE):
-                        audio_chunk, _ = mic_stream.read(self.chunk_size)
-                        detected = self.wakeword_detector.process_frame(audio_chunk)
+                # Wait for user keyboard input or wake-word event
+                prompt_msg = f"\033[92m[Say '{settings.wake_word}' OR Type message]: \033[0m"
+                user_input = input(prompt_msg).strip()
 
-                        if detected:
-                            print("\n\033[96m" + "*" * 50)
-                            print(f"  [INFO] Wake word '{settings.wake_word}' detected!")
-                            print("*" * 50 + "\033[0m")
+                # If wake word triggered while at input prompt, handle voice
+                if self._wake_triggered.is_set():
+                    self.handle_voice_interaction()
+                    continue
 
-                            # 2. State: LISTENING
-                            self.state_machine.transition_to(AgentState.LISTENING)
-                            print(f"\033[90m[INFO] State: {self.state_machine.current_state.value}\033[0m")
-
-                            # Spoken response: "Yes, sir?"
-                            activation_phrase = settings.wake_word_activation_response.strip('"')
-                            self.speak(activation_phrase, suppress_wakeword=False)
-
-                            # 3. Capture user voice command
-                            audio_command = self.record_command()
-                            if audio_command is None:
-                                print("\033[90m[INFO] No command detected. Returning to IDLE.\033[0m\n")
-                                self.state_machine.transition_to(AgentState.IDLE)
-                                print(f"\033[92m[INFO] Waiting for wake word '{settings.wake_word}'...\033[0m\n")
-                                continue
-
-                            # 4. State: PROCESSING
-                            self.state_machine.transition_to(AgentState.PROCESSING)
-                            print(f"\033[90m[INFO] State: {self.state_machine.current_state.value}\033[0m")
-
-                            user_text = self.transcribe(audio_command)
-                            if not user_text:
-                                print("\033[90m[INFO] Could not understand speech. Returning to IDLE.\033[0m\n")
-                                self.state_machine.transition_to(AgentState.IDLE)
-                                print(f"\033[92m[INFO] Waiting for wake word '{settings.wake_word}'...\033[0m\n")
-                                continue
-
-                            print(f"\033[93mUser:\033[0m {user_text}")
-
-                            # Query LLM
-                            print("\033[90m[INFO] Sending request to Ollama...\033[0m", flush=True)
-                            response_text = self.ask_llm(user_text)
-                            print("\033[90m[INFO] Response generated.\033[0m")
-
-                            # 5. State: SPEAKING (speak handles SPEAKING -> IDLE transition)
-                            print(f"\033[90m[INFO] State: {AgentState.SPEAKING.value}\033[0m")
-                            self.speak(response_text, suppress_wakeword=True)
-                            print(f"\033[90m[INFO] State: {self.state_machine.current_state.value}\033[0m")
-                            print(f"\033[92m[INFO] Waiting for wake word '{settings.wake_word}'...\033[0m\n")
-
-                    else:
-                        time.sleep(0.05)
-
-                except KeyboardInterrupt:
-                    print("\n[INFO] Stopping JARVIS voice assistant...")
+                if user_input.lower() in ["exit", "quit", "q"]:
+                    self.speak("Shutting down local systems. Goodbye, sir.")
                     self._running = False
                     break
-                except Exception as e:
-                    logger.error(f"Voice loop error: {e}")
-                    self.state_machine.transition_to(AgentState.IDLE)
-                    time.sleep(0.1)
+
+                if user_input != "":
+                    self.handle_text_interaction(user_input)
+
+            except KeyboardInterrupt:
+                print("\n[INFO] Stopping JARVIS voice assistant...")
+                self._running = False
+                break
+            except Exception as e:
+                logger.error(f"Main loop error: {e}")
+                self.state_machine.transition_to(AgentState.IDLE)
+                time.sleep(0.1)
 
 
 def main():
